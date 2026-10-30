@@ -9,10 +9,17 @@
 // Usage:
 //   DATABASE_URL=postgres://... node scripts/ingest.mjs [path-to-demos.json]
 // Default path: .data/demos.json
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import path from 'path';
 import { PrismaClient } from '@prisma/client';
 
 const file = process.argv[2] || '.data/demos.json';
+const UPLOAD_DIR = path.join(path.dirname(file), 'uploads');
+
+const TYPES = {
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.m4v': 'video/x-m4v',
+  '.gif': 'image/gif', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+};
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set. Point it at your Postgres database first.');
@@ -78,7 +85,26 @@ try {
     });
   }
 
-  console.log(`Ingested ${d} demo(s), ${s} slot(s)${shortUrl?.code ? ', 1 short link' : ''} from ${file}.`);
+  // Carry local uploaded media (videos, GIFs, posters) into the durable Asset table, so
+  // the demos keep working after you move off the local filesystem.
+  let a = 0;
+  if (existsSync(UPLOAD_DIR)) {
+    for (const name of readdirSync(UPLOAD_DIR)) {
+      if (name.startsWith('.')) continue;
+      const full = path.join(UPLOAD_DIR, name);
+      if (!statSync(full).isFile()) continue;
+      const bytes = readFileSync(full);
+      const contentType = TYPES[path.extname(name).toLowerCase()] || 'application/octet-stream';
+      await prisma.asset.upsert({
+        where: { name },
+        create: { name, contentType, size: bytes.length, bytes, created: BigInt(Date.now()) },
+        update: { contentType, size: bytes.length, bytes },
+      });
+      a++;
+    }
+  }
+
+  console.log(`Ingested ${d} demo(s), ${s} slot(s), ${a} asset(s)${shortUrl?.code ? ', 1 short link' : ''} from ${file} and ${UPLOAD_DIR}.`);
 } catch (err) {
   console.error('Ingest failed:', err);
   process.exit(1);

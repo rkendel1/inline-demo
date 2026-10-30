@@ -101,8 +101,9 @@ npm run db:deploy      # prisma generate + migrate deploy + ingest any local .da
 ```
 
 `db:deploy` runs `scripts/deploy-db.sh`, which is safe to re-run. If you built demos locally
-first, it ingests `.data/demos.json` into Postgres so nothing is lost on the switch. To
-import a JSON backup later: `DATABASE_URL=… npm run db:ingest -- path/to/demos.json`.
+first, it ingests `.data/demos.json` **and the uploaded media in `.data/uploads/`** into
+Postgres so nothing is lost on the switch. To import a backup later:
+`DATABASE_URL=… npm run db:ingest -- path/to/demos.json`.
 
 ## Deploying
 
@@ -111,8 +112,10 @@ Works on Vercel (`vercel.json` sets the framework). Set these in the project:
 - **`DATABASE_URL`** — a Postgres URL (above). `prisma generate` runs automatically on
   install and build; apply migrations with `npm run db:migrate` (or the full
   `npm run db:deploy`) against the production database once.
-- **`BLOB_READ_WRITE_TOKEN`** — so uploads go to Vercel Blob instead of the ephemeral
-  filesystem (`npm i @vercel/blob`).
+- **Media** is stored durably too, most-durable-first: `BLOB_READ_WRITE_TOKEN` → Vercel
+  Blob (best for large videos; `npm i @vercel/blob`); else `DATABASE_URL` → Postgres bytea;
+  else the local filesystem. With just `DATABASE_URL`, videos and GIFs persist with the
+  rest — set a Blob token only to offload large files from the database.
 - **ffmpeg** — Vercel's default runtime has no ffmpeg, so `/api/preview` returns 501 there.
   Generate previews where ffmpeg exists: run `scripts/make-preview.sh` locally and upload
   the resulting `preview.gif` as the chip image, or do it on a build step / container.
@@ -159,7 +162,7 @@ lib/
   store-prisma.ts  Durable Postgres backend
   store-fs.ts      Local filesystem backend (.data/demos.json)
   db.ts            Prisma client singleton
-  blob.ts     Asset storage (filesystem default, Vercel Blob optional)
+  blob.ts     Asset storage (Vercel Blob → Postgres bytea → filesystem)
   gif.ts      ffmpeg preview-GIF generation
   signature.ts  Email-safe signature HTML builder
   shorturl.ts   Optional short_url integration (signed create/repoint)

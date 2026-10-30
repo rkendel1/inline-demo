@@ -39,3 +39,14 @@ model ShortLink {
   code     String
   shortUrl String
 }
+
+// Uploaded media (videos, preview GIFs, posters) stored durably in the database, so demos
+// survive restarts and redeploys without a separate object store. Used when DATABASE_URL
+// is set and BLOB_READ_WRITE_TOKEN is not. `name` is the public URL name (/uploads/<name>).
+model Asset {
+  name        String @id
+  contentType String
+  size        Int
+  bytes       Bytes
+  created     BigInt
+}
