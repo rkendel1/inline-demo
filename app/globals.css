@@ -90,5 +90,9 @@ pre.snippet {
   color: #cdd6ee;
 }
 
+/* How the signature looks in an email: on white, like a message body. */
+.sig-preview { background: #ffffff; border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+details summary { cursor: pointer; margin-bottom: 8px; }
+
 .muted { color: var(--muted); font-size: 13px; }
 .hr { height: 1px; background: var(--border); margin: 16px 0; border: 0; }
