@@ -1,52 +1,33 @@
-// Demo registry + repointable slots.
+// Store facade. Picks the backend once:
+//   - DATABASE_URL set  -> Prisma/Postgres (durable; production). Links never break.
+//   - otherwise         -> filesystem JSON under .data/ (zero-setup local dev).
 //
-// Zero-setup default: a JSON file under .data/. This is intentionally simple so the
-// app runs with `npm run dev` and nothing else. For production with multiple serverless
-// instances, swap this module's read/write for a real KV/DB (e.g. Vercel KV, Postgres).
-// The short_url repo already shows a Prisma/Postgres setup you can mirror if you want to
-// unify storage later.
+// The Prisma module is imported lazily so the app builds and runs locally without a
+// generated Prisma client or a database. All functions keep the same signatures, so the
+// API routes don't need to know which backend is active.
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import type { Demo, StoreData } from './types';
+import type { Demo } from './types';
+export { newId } from './id';
 
-const DATA_DIR = path.join(process.cwd(), '.data');
-const DATA_FILE = path.join(DATA_DIR, 'demos.json');
+type Backend = typeof import('./store-fs');
 
-const empty: StoreData = { demos: {}, slots: {} };
+let backendPromise: Promise<Backend> | null = null;
 
-async function readAll(): Promise<StoreData> {
-  try {
-    const raw = await fs.readFile(DATA_FILE, 'utf8');
-    const parsed = JSON.parse(raw) as StoreData;
-    return { demos: parsed.demos ?? {}, slots: parsed.slots ?? {}, shortUrl: parsed.shortUrl };
-  } catch (err: any) {
-    if (err?.code === 'ENOENT') return { ...empty };
-    throw err;
+function backend(): Promise<Backend> {
+  if (!backendPromise) {
+    backendPromise = process.env.DATABASE_URL
+      ? (import('./store-prisma') as Promise<Backend>)
+      : import('./store-fs');
   }
-}
-
-async function writeAll(data: StoreData): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
-}
-
-export function newId(): string {
-  // Short, URL-safe, unguessable enough for a personal tool.
-  return crypto.randomBytes(5).toString('hex');
+  return backendPromise;
 }
 
 export async function listDemos(): Promise<Demo[]> {
-  const { demos } = await readAll();
-  return Object.values(demos).sort((a, b) => b.created - a.created);
+  return (await backend()).listDemos();
 }
-
 export async function getDemo(id: string): Promise<Demo | null> {
-  const { demos } = await readAll();
-  return demos[id] ?? null;
+  return (await backend()).getDemo(id);
 }
-
 export async function createDemo(input: {
   title: string;
   kind: Demo['kind'];
@@ -54,88 +35,32 @@ export async function createDemo(input: {
   poster?: string;
   caption?: string;
 }): Promise<Demo> {
-  const data = await readAll();
-  const id = newId();
-  const demo: Demo = {
-    id,
-    title: input.title,
-    kind: input.kind,
-    src: input.src,
-    poster: input.poster,
-    caption: input.caption,
-    clicks: 0,
-    plays: 0,
-    created: Date.now(),
-  };
-  data.demos[id] = demo;
-  await writeAll(data);
-  return demo;
+  return (await backend()).createDemo(input);
 }
-
 export async function updateDemo(
   id: string,
   patch: Partial<Pick<Demo, 'title' | 'kind' | 'src' | 'poster' | 'caption'>>
 ): Promise<Demo | null> {
-  const data = await readAll();
-  const demo = data.demos[id];
-  if (!demo) return null;
-  Object.assign(demo, patch, { updated: Date.now() });
-  await writeAll(data);
-  return demo;
+  return (await backend()).updateDemo(id, patch);
 }
-
 export async function deleteDemo(id: string): Promise<boolean> {
-  const data = await readAll();
-  if (!data.demos[id]) return false;
-  delete data.demos[id];
-  // Drop any slot that pointed here so the signature fails safe (shows nothing) rather
-  // than resolving to a deleted demo.
-  for (const slot of Object.keys(data.slots)) {
-    if (data.slots[slot] === id) delete data.slots[slot];
-  }
-  await writeAll(data);
-  return true;
+  return (await backend()).deleteDemo(id);
 }
-
 export async function bump(id: string, field: 'clicks' | 'plays'): Promise<void> {
-  const data = await readAll();
-  const demo = data.demos[id];
-  if (!demo) return;
-  demo[field] += 1;
-  await writeAll(data);
+  return (await backend()).bump(id, field);
 }
-
-// --- Slots: the repointable "manage the link" layer ---
-
 export async function getSlots(): Promise<Record<string, string>> {
-  const { slots } = await readAll();
-  return slots;
+  return (await backend()).getSlots();
 }
-
 export async function resolveSlot(slot: string): Promise<Demo | null> {
-  const data = await readAll();
-  const id = data.slots[slot];
-  if (!id) return null;
-  return data.demos[id] ?? null;
+  return (await backend()).resolveSlot(slot);
 }
-
 export async function setSlot(slot: string, demoId: string): Promise<boolean> {
-  const data = await readAll();
-  if (!data.demos[demoId]) return false;
-  data.slots[slot] = demoId;
-  await writeAll(data);
-  return true;
+  return (await backend()).setSlot(slot, demoId);
 }
-
-// --- Managed short_url link (remembered after short_url generates its random code) ---
-
 export async function getShortUrlMeta(): Promise<{ code?: string; shortUrl?: string }> {
-  const { shortUrl } = await readAll();
-  return shortUrl ?? {};
+  return (await backend()).getShortUrlMeta();
 }
-
 export async function setShortUrlMeta(meta: { code: string; shortUrl: string }): Promise<void> {
-  const data = await readAll();
-  data.shortUrl = meta;
-  await writeAll(data);
+  return (await backend()).setShortUrlMeta(meta);
 }

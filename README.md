@@ -84,15 +84,37 @@ Copy `.env.example` to `.env.local`:
 | `BLOB_READ_WRITE_TOKEN` | Optional. If set, uploads go to Vercel Blob instead of the local filesystem (`npm i @vercel/blob`). |
 | `SHORT_URL_BASE_URL` / `SHORT_URL_OWNER` / `SHORT_URL_PRIVATE_KEY` | Optional. Wire the signature to a managed `short_url` link (random code; see above). `SHORT_URL_CODE` optionally forces a specific code. |
 
+## Database (durable links)
+
+Storage has two backends, chosen automatically:
+
+- **No `DATABASE_URL`** → a local `.data/demos.json` file. Zero setup, great for dev,
+  ephemeral on serverless.
+- **`DATABASE_URL` set** → **Postgres via Prisma**. Demos, the live slot, and the generated
+  short-link code all persist, so links never break across restarts or redeploys.
+
+Setup (any Postgres — Neon, Supabase, RDS, Vercel Postgres):
+
+```bash
+export DATABASE_URL="postgresql://user:pass@host:5432/inline_demo"
+npm run db:deploy      # prisma generate + migrate deploy + ingest any local .data/demos.json
+```
+
+`db:deploy` runs `scripts/deploy-db.sh`, which is safe to re-run. If you built demos locally
+first, it ingests `.data/demos.json` into Postgres so nothing is lost on the switch. To
+import a JSON backup later: `DATABASE_URL=… npm run db:ingest -- path/to/demos.json`.
+
 ## Deploying
 
-Works on Vercel (`vercel.json` sets the framework). Two things to know:
+Works on Vercel (`vercel.json` sets the framework). Set these in the project:
 
-- **Storage.** The filesystem store and `public/uploads` are fine locally but *ephemeral*
-  on serverless. For production, set `BLOB_READ_WRITE_TOKEN` for uploads, and move the demo
-  registry in `lib/store.ts` to a real KV/DB (Vercel KV, or mirror `short_url`'s Postgres).
-- **ffmpeg.** Vercel's default runtime has no ffmpeg, so `/api/preview` returns 501 there.
-  Generate previews where ffmpeg exists — run `scripts/make-preview.sh` locally and upload
+- **`DATABASE_URL`** — a Postgres URL (above). `prisma generate` runs automatically on
+  install and build; apply migrations with `npm run db:migrate` (or the full
+  `npm run db:deploy`) against the production database once.
+- **`BLOB_READ_WRITE_TOKEN`** — so uploads go to Vercel Blob instead of the ephemeral
+  filesystem (`npm i @vercel/blob`).
+- **ffmpeg** — Vercel's default runtime has no ffmpeg, so `/api/preview` returns 501 there.
+  Generate previews where ffmpeg exists: run `scripts/make-preview.sh` locally and upload
   the resulting `preview.gif` as the chip image, or do it on a build step / container.
 
 ```bash
@@ -129,8 +151,14 @@ app/
   api/preview/route.ts     ffmpeg → looping preview GIF + poster
   api/live/route.ts        Get / set which demo a slot points to
   api/track/[id]/route.ts  Transparent play counter
+prisma/
+  schema.prisma   Demo / Slot / ShortLink models (Postgres)
+  migrations/      Versioned SQL migrations
 lib/
-  store.ts    Demo registry + slots (filesystem JSON by default)
+  store.ts       Backend dispatcher (Prisma if DATABASE_URL, else filesystem)
+  store-prisma.ts  Durable Postgres backend
+  store-fs.ts      Local filesystem backend (.data/demos.json)
+  db.ts            Prisma client singleton
   blob.ts     Asset storage (filesystem default, Vercel Blob optional)
   gif.ts      ffmpeg preview-GIF generation
   signature.ts  Email-safe signature HTML builder
@@ -142,4 +170,6 @@ components/
 scripts/
   make-preview.sh      Generate preview GIF/poster locally with ffmpeg
   shorturl-keygen.mjs  One-time owner id + P-256 key for the short_url integration
+  deploy-db.sh         generate + migrate deploy + ingest (run once per deploy)
+  ingest.mjs           Import .data/demos.json (or a backup) into Postgres
 ```

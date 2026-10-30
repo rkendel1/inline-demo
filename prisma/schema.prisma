@@ -1,0 +1,41 @@
+// Durable storage for inline-demo. Mirrors short_url's Postgres + Prisma setup so demos,
+// the live-slot pointer, and the managed short_url code all survive restarts and
+// redeploys — no broken links.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// A demo you can link to from your signature.
+model Demo {
+  id      String  @id
+  title   String
+  kind    String // 'video' | 'embed'
+  src     String
+  poster  String?
+  caption String?
+  clicks  Int     @default(0)
+  plays   Int     @default(0)
+  created BigInt // ms epoch
+  updated BigInt? // ms epoch
+
+  @@index([created])
+}
+
+// A named, repointable pointer (e.g. "signature") to the demo that is currently live.
+model Slot {
+  name   String @id
+  demoId String
+}
+
+// The single managed short_url link (its generated code + full short URL). One row.
+model ShortLink {
+  id       Int    @id @default(1)
+  code     String
+  shortUrl String
+}
