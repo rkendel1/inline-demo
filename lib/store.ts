@@ -7,7 +7,7 @@
 // backend is active.
 
 import type { Demo } from './types';
-import { isShortUrlConfigured } from './shorturl-api';
+import { assertLocalStorageAllowed, isShortUrlConfigured } from './shorturl-api';
 export { newId } from './id';
 
 type Backend = typeof import('./store-fs');
@@ -16,7 +16,12 @@ let backendPromise: Promise<Backend> | null = null;
 
 function backend(): Promise<Backend> {
   if (!backendPromise) {
-    backendPromise = isShortUrlConfigured() ? import('./store-shorturl') : import('./store-fs');
+    if (isShortUrlConfigured()) {
+      backendPromise = import('./store-shorturl');
+    } else {
+      assertLocalStorageAllowed(); // throws on Vercel; not cached, so a fixed env recovers
+      backendPromise = import('./store-fs');
+    }
   }
   return backendPromise;
 }

@@ -11,7 +11,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { isShortUrlConfigured, shortUrlConfig, signedFetch } from './shorturl-api';
+import { assertLocalStorageAllowed, isShortUrlConfigured, shortUrlConfig, signedFetch } from './shorturl-api';
 
 export const UPLOAD_DIR = path.join(process.cwd(), '.data', 'uploads');
 
@@ -72,6 +72,7 @@ export async function storeAsset(filename: string, bytes: Buffer, contentType: s
     return { url: result.url };
   }
 
+  assertLocalStorageAllowed();
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
   await fs.writeFile(path.join(UPLOAD_DIR, name), bytes);
   return { url: `/uploads/${name}` };

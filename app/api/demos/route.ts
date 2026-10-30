@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listDemos, createDemo } from '@/lib/store';
 import { isAuthorized } from '@/lib/auth';
+import { storageError } from '@/lib/shorturl-api';
 
 export async function GET() {
   const demos = await listDemos();
@@ -30,6 +31,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'src must be an http(s) URL or an /uploads path' }, { status: 400 });
   }
 
-  const demo = await createDemo({ title, kind, src, poster, caption });
-  return NextResponse.json({ demo }, { status: 201 });
+  try {
+    const demo = await createDemo({ title, kind, src, poster, caption });
+    return NextResponse.json({ demo }, { status: 201 });
+  } catch (err) {
+    return storageError(err);
+  }
 }
