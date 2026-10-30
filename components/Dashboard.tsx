@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Demo } from '@/lib/types';
 import { buildSignatureHtml } from '@/lib/signature';
+import { autoPoster } from '@/lib/media';
 
 const SLOT = 'signature'; // the single repointable slot this UI manages
 
@@ -183,12 +184,16 @@ export default function Dashboard({
 
   // Signature points at the repointable /go/signature link, and shows the live demo's
   // GIF/poster as the chip image.
+  // The demo's poster/GIF, else a thumbnail derived from its link (e.g. YouTube), else none.
+  function chipImage(d: Demo): string | undefined {
+    const img = d.poster || autoPoster(d.src);
+    return img && img.startsWith('/') ? baseUrl + img : img;
+  }
+
   const signatureHtml = liveDemo
     ? buildSignatureHtml({
         href: goUrl,
-        imageUrl: liveDemo.poster
-          ? (liveDemo.poster.startsWith('/') ? baseUrl + liveDemo.poster : liveDemo.poster)
-          : `${baseUrl}/demo/${liveDemo.id}`,
+        imageUrl: chipImage(liveDemo),
         title: liveDemo.title,
         subtitle: liveDemo.caption || 'See it in action →',
       })
@@ -264,10 +269,17 @@ export default function Dashboard({
         {liveDemo ? (
           <>
             <p className="muted">
-              Links to <code>{goUrl}</code>{resolvedShortUrl ? ' (managed in short_url)' : shortConfigured ? ' (short_url link is created on first “Make live”)' : ' (repointable slot)'} → currently <b>{liveDemo.title}</b>. Paste this into Gmail / Outlook / Apple Mail signature settings.
+              Links to <code>{goUrl}</code>{resolvedShortUrl ? ' (managed in short_url)' : shortConfigured ? ' (short_url link is created on first “Make live”)' : ' (repointable slot)'} → currently <b>{liveDemo.title}</b>. Click <b>Copy signature</b>, then paste into Gmail / Outlook / Apple Mail signature settings — it pastes as the chip below, not as code.
             </p>
-            <pre className="snippet">{signatureHtml}</pre>
-            <CopyButton text={signatureHtml} />
+            <div className="sig-preview" dangerouslySetInnerHTML={{ __html: signatureHtml }} />
+            <div className="row" style={{ marginTop: 10 }}>
+              <CopySignature html={signatureHtml} plain={`${liveDemo.title}: ${goUrl}`} />
+            </div>
+            <details style={{ marginTop: 12 }}>
+              <summary className="muted">HTML source (only for tools that take raw HTML)</summary>
+              <pre className="snippet">{signatureHtml}</pre>
+              <CopySource text={signatureHtml} />
+            </details>
           </>
         ) : (
           <p className="muted">Mark a demo as <b>Live</b> below to generate your signature.</p>
@@ -279,7 +291,7 @@ export default function Dashboard({
         {demos.length === 0 && !loading && <p className="muted">None yet.</p>}
         {demos.map((d) => {
           const isLive = d.id === liveId;
-          const img = d.poster ? (d.poster.startsWith('/') ? baseUrl + d.poster : d.poster) : undefined;
+          const img = chipImage(d);
           return (
             <div key={d.id} style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 14 }}>
               <div className="demo-card">
@@ -306,17 +318,52 @@ export default function Dashboard({
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+// Signature editors (Gmail, Outlook, Apple Mail) take rich content, not HTML source: put
+// the rendered chip on the clipboard as text/html so it pastes as the chip itself.
+function CopySignature({ html, plain }: { html: string; plain: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        }),
+      ]);
+    } catch {
+      // Older browsers: copy a rendered selection the classic way (still rich).
+      const holder = document.createElement('div');
+      holder.innerHTML = html;
+      holder.style.position = 'fixed';
+      holder.style.left = '-9999px';
+      document.body.appendChild(holder);
+      const range = document.createRange();
+      range.selectNodeContents(holder);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      document.execCommand('copy');
+      sel?.removeAllRanges();
+      holder.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+  return <button onClick={copy}>{copied ? 'Copied — now paste into your signature' : 'Copy signature'}</button>;
+}
+
+function CopySource({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
+      className="ghost"
       onClick={async () => {
         await navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
     >
-      {copied ? 'Copied!' : 'Copy signature HTML'}
+      {copied ? 'Copied!' : 'Copy HTML source'}
     </button>
   );
 }

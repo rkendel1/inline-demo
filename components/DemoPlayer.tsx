@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { embedUrl } from '@/lib/media';
 import type { DemoKind } from '@/lib/types';
 
 // Plays a hosted video (muted autoplay, allowed in browsers) or embeds an external demo
@@ -61,7 +62,7 @@ export default function DemoPlayer({
   return (
     <div style={frame}>
       <iframe
-        src={src}
+        src={embedUrl(src)}
         allow="autoplay; fullscreen; clipboard-write; encrypted-media"
         allowFullScreen
         style={{ width: '100%', height: '100%', border: 0, display: 'block' }}

@@ -67,8 +67,10 @@ export async function repointShortLink(destUrl: string): Promise<RepointResult> 
       return { ok: false, error: `Lookup failed (${lookup.status}): ${j.error || 'unknown'}` };
     }
 
-    let { revision } = await lookup.json();
+    const current = await lookup.json();
+    let { revision } = current;
     const shortUrl = remembered.shortUrl || `${cfg.base}/${code}`;
+    if (current.url === destUrl) return { ok: true, shortUrl }; // already pointing there
 
     // Update the destination, retrying once on a revision conflict.
     for (let attempt = 0; attempt < 2; attempt++) {

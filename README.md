@@ -79,7 +79,7 @@ Copy `.env.example` to `.env.local`:
 
 | Var | Purpose |
 | --- | --- |
-| `NEXT_PUBLIC_BASE_URL` | Public URL of this app once deployed. Used to build signature + demo links. |
+| `NEXT_PUBLIC_BASE_URL` | Public URL of this app once deployed. Used to build signature + demo links. Defaults to the Vercel production domain on Vercel; set it for a custom domain. |
 | `ADMIN_TOKEN` | Shared secret protecting the dashboard and write APIs. **Set this in production.** |
 | `BLOB_READ_WRITE_TOKEN` | Optional. If set, uploads go to Vercel Blob instead of short_url's database (`npm i @vercel/blob`). |
 | `SHORT_URL_BASE_URL` / `SHORT_URL_OWNER` / `SHORT_URL_PRIVATE_KEY` | Wire the signature to a managed `short_url` link (random code; see above) **and** store everything in short_url's database. Unset = local files (dev only). `SHORT_URL_CODE` optionally forces a specific code. |

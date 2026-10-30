@@ -9,6 +9,12 @@ import { baseUrl } from '@/lib/base';
 // POST { slot, demoId } -> repoint a slot (the "manage the link" action)
 export async function GET() {
   const slots = await getSlots();
+  // Self-heal: keep the short link aimed at the live demo on this app's current base URL
+  // (e.g. a link created while the base URL was wrong). A no-op when it already is.
+  if (slots.signature && isShortUrlConfigured()) {
+    const r = await repointShortLink(`${baseUrl()}/demo/${slots.signature}`);
+    if (!r.ok) console.error('short link check failed:', r.error);
+  }
   return NextResponse.json({ slots, shortUrl: await shortLink(), shortUrlConfigured: isShortUrlConfigured() });
 }
 
