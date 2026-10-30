@@ -8,7 +8,7 @@ import { baseUrl } from '@/lib/base';
 // POST { slot, demoId } -> repoint a slot (the "manage the link" action)
 export async function GET() {
   const slots = await getSlots();
-  return NextResponse.json({ slots, shortUrl: shortLink(), shortUrlConfigured: isShortUrlConfigured() });
+  return NextResponse.json({ slots, shortUrl: await shortLink(), shortUrlConfigured: isShortUrlConfigured() });
 }
 
 export async function POST(request: NextRequest) {

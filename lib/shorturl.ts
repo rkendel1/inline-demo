@@ -8,14 +8,19 @@
 // Auth follows short_url's signed-request scheme exactly (see its API_INTEGRATION.md):
 // ECDSA P-256 / SHA-256 over a canonical string, raw r‖s signature, hex.
 //
+// On first use the code is generated randomly by short_url (e.g. "otter0427"), exactly
+// like any other short_url link, then remembered so later changes repoint the same link.
+//
 // Required env to enable:
 //   SHORT_URL_BASE_URL   e.g. https://0-2.ca
 //   SHORT_URL_OWNER      16–128 chars [A-Za-z0-9_-]  (randomBytes(16).hex)
 //   SHORT_URL_PRIVATE_KEY  PKCS8 PEM of a prime256v1 EC private key
-//   SHORT_URL_CODE       the custom short code to own, e.g. "demo"  (default: "demo")
+// Optional:
+//   SHORT_URL_CODE       force a specific custom code instead of a random one
 // Generate the owner + key once with: node scripts/shorturl-keygen.mjs
 
 import { createHash, createPrivateKey, createPublicKey, sign } from 'crypto';
+import { getShortUrlMeta, setShortUrlMeta } from './store';
 
 const SIGNATURE_VERSION = 'short-url-auth-v1';
 
@@ -23,19 +28,22 @@ export function shortUrlConfig() {
   const base = process.env.SHORT_URL_BASE_URL?.replace(/\/+$/, '');
   const owner = process.env.SHORT_URL_OWNER;
   const privateKeyPem = process.env.SHORT_URL_PRIVATE_KEY;
-  const code = (process.env.SHORT_URL_CODE || 'demo').trim();
+  // Optional: pin a custom code. Omitted => short_url generates a random one on first use.
+  const forcedCode = process.env.SHORT_URL_CODE?.trim() || undefined;
   if (!base || !owner || !privateKeyPem) return null;
-  return { base, owner, privateKeyPem, code };
+  return { base, owner, privateKeyPem, forcedCode };
 }
 
 export function isShortUrlConfigured(): boolean {
   return shortUrlConfig() !== null;
 }
 
-// The public short link, if configured. Safe to compute without any network call.
-export function shortLink(): string | null {
-  const cfg = shortUrlConfig();
-  return cfg ? `${cfg.base}/${cfg.code}` : null;
+// The public short link once it exists (after the first "set live"). Reads the remembered
+// code from the store; null if short_url isn't configured or no link has been created yet.
+export async function shortLink(): Promise<string | null> {
+  if (!isShortUrlConfigured()) return null;
+  const meta = await getShortUrlMeta();
+  return meta.shortUrl ?? null;
 }
 
 async function signedFetch(method: 'POST' | 'PATCH', path: string, body: object) {
@@ -66,43 +74,58 @@ export interface RepointResult {
   error?: string;
 }
 
-// Point the managed short link at `destUrl`. Creates the code on first use (trust-on-first-
-// use binds this key), otherwise updates the destination with revision handling.
+// Create the short link on first use (short_url picks a random code unless SHORT_URL_CODE
+// forces one), then on later calls repoint that same remembered link to `destUrl`.
+async function createLink(destUrl: string, cfg: NonNullable<ReturnType<typeof shortUrlConfig>>): Promise<RepointResult> {
+  const body: Record<string, unknown> = { url: destUrl };
+  if (cfg.forcedCode) body.customCode = cfg.forcedCode; // omit => server generates one
+  const res = await signedFetch('POST', '/api/shorten', body);
+  const j = await res.json().catch(() => ({} as any));
+  if (res.ok && j.shortCode) {
+    const shortUrl: string = j.shortUrl || `${cfg.base}/${j.shortCode}`;
+    await setShortUrlMeta({ code: j.shortCode, shortUrl });
+    return { ok: true, shortUrl };
+  }
+  if (res.status === 409) {
+    return { ok: false, error: cfg.forcedCode ? `Short code "${cfg.forcedCode}" is already taken. Pick another SHORT_URL_CODE or leave it unset for a random one.` : 'Generated code collided; try again.' };
+  }
+  return { ok: false, error: `Create failed (${res.status}): ${j.error || 'unknown'}` };
+}
+
 export async function repointShortLink(destUrl: string): Promise<RepointResult> {
   const cfg = shortUrlConfig();
   if (!cfg) return { ok: false, error: 'short_url is not configured' };
-  const path = `/api/links/${cfg.code}`;
 
   try {
-    // Does the code already exist (and do we have its current revision)?
-    const meta = await fetch(`${cfg.base}${path}`, { cache: 'no-store' });
+    const remembered = await getShortUrlMeta();
+    const code = remembered.code;
 
-    if (meta.status === 404) {
-      // Create it.
-      const res = await signedFetch('POST', '/api/shorten', { url: destUrl, customCode: cfg.code });
-      if (res.ok) return { ok: true, shortUrl: `${cfg.base}/${cfg.code}` };
-      const j = await res.json().catch(() => ({}));
-      if (res.status === 409) return { ok: false, error: `Short code "${cfg.code}" is already taken by someone else. Choose another SHORT_URL_CODE.` };
-      return { ok: false, error: `Create failed (${res.status}): ${j.error || 'unknown'}` };
+    // No link yet → create one (random code, or the forced code).
+    if (!code) return await createLink(destUrl, cfg);
+
+    const path = `/api/links/${code}`;
+    const lookup = await fetch(`${cfg.base}${path}`, { cache: 'no-store' });
+
+    // The remembered link is gone (deleted upstream) → make a fresh one.
+    if (lookup.status === 404 || lookup.status === 410) return await createLink(destUrl, cfg);
+    if (!lookup.ok) {
+      const j = await lookup.json().catch(() => ({} as any));
+      return { ok: false, error: `Lookup failed (${lookup.status}): ${j.error || 'unknown'}` };
     }
 
-    if (!meta.ok) {
-      const j = await meta.json().catch(() => ({}));
-      return { ok: false, error: `Lookup failed (${meta.status}): ${j.error || 'unknown'}` };
-    }
-
-    let { revision } = await meta.json();
+    let { revision } = await lookup.json();
+    const shortUrl = remembered.shortUrl || `${cfg.base}/${code}`;
 
     // Update the destination, retrying once on a revision conflict.
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await signedFetch('PATCH', path, { url: destUrl, revision });
-      if (res.ok) return { ok: true, shortUrl: `${cfg.base}/${cfg.code}` };
-      const j = await res.json().catch(() => ({}));
+      if (res.ok) return { ok: true, shortUrl };
+      const j = await res.json().catch(() => ({} as any));
       if (res.status === 409 && j.currentRevision) {
         revision = j.currentRevision; // reload and retry
         continue;
       }
-      if (res.status === 403) return { ok: false, error: `Not authorized to edit "${cfg.code}" — the code is bound to a different key. Use the key that first claimed it, or a fresh SHORT_URL_CODE.` };
+      if (res.status === 403) return { ok: false, error: `Not authorized to edit ${code} — it's bound to a different key. Use the key that first claimed it.` };
       return { ok: false, error: `Update failed (${res.status}): ${j.error || 'unknown'}` };
     }
     return { ok: false, error: 'Update kept conflicting; try again.' };

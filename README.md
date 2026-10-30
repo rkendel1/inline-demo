@@ -55,21 +55,23 @@ GIF generate, click **Make live**, copy the signature.
 
 ## Wiring it into `short_url`
 
-Point the signature at a managed short link (e.g. `0-2.ca/demo`) so link management lives
-in `short_url` — editable destination, revision history, analytics, QR. When set, each time
-you make a demo live, inline-demo **repoints that short link** to the new demo's landing
-page; the pasted signature (which uses the short link) never changes.
+Point the signature at a managed short link so link management lives in `short_url` —
+editable destination, revision history, analytics, QR. On the first **Make live**,
+`short_url` **generates a random code** (e.g. `0-2.ca/otter0427`), just like any other
+short_url link; inline-demo remembers it and **repoints that same link** to the new demo on
+later changes. The pasted signature (which uses the short link) never changes.
 
 ```bash
-node scripts/shorturl-keygen.mjs   # prints SHORT_URL_OWNER + SHORT_URL_PRIVATE_KEY + code
+node scripts/shorturl-keygen.mjs   # prints SHORT_URL_OWNER + SHORT_URL_PRIVATE_KEY
 # paste the output into .env.local
 ```
 
 The integration uses `short_url`'s documented signed-request scheme (ECDSA P-256 /
-SHA-256). The first time you set a demo live, your key claims `SHORT_URL_CODE` via
+SHA-256). The first time you set a demo live, your key claims the generated code via
 trust-on-first-use; keep the private key secret and backed up — it's the only thing that
-can edit that link afterward. Without these env vars, the signature falls back to this
-app's own `/go/signature` link, which is repointed internally instead.
+can edit that link afterward. Set `SHORT_URL_CODE` to force a specific code instead of a
+random one. Without these env vars, the signature falls back to this app's own
+`/go/signature` link, which is repointed internally instead.
 
 ## Configuration
 
@@ -80,7 +82,7 @@ Copy `.env.example` to `.env.local`:
 | `NEXT_PUBLIC_BASE_URL` | Public URL of this app once deployed. Used to build signature + demo links. |
 | `ADMIN_TOKEN` | Shared secret protecting the dashboard and write APIs. **Set this in production.** |
 | `BLOB_READ_WRITE_TOKEN` | Optional. If set, uploads go to Vercel Blob instead of the local filesystem (`npm i @vercel/blob`). |
-| `SHORT_URL_BASE_URL` / `SHORT_URL_OWNER` / `SHORT_URL_CODE` / `SHORT_URL_PRIVATE_KEY` | Optional. Wire the signature to a managed `short_url` link (see above). |
+| `SHORT_URL_BASE_URL` / `SHORT_URL_OWNER` / `SHORT_URL_PRIVATE_KEY` | Optional. Wire the signature to a managed `short_url` link (random code; see above). `SHORT_URL_CODE` optionally forces a specific code. |
 
 ## Deploying
 

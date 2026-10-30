@@ -18,6 +18,8 @@ export default function Dashboard({
   const [token, setToken] = useState('');
   const [demos, setDemos] = useState<Demo[]>([]);
   const [slots, setSlots] = useState<Record<string, string>>({});
+  const [resolvedShortUrl, setResolvedShortUrl] = useState<string | null>(shortUrl ?? null);
+  const [shortConfigured, setShortConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -47,6 +49,8 @@ export default function Dashboard({
     ]);
     setDemos(d.demos || []);
     setSlots(s.slots || {});
+    setResolvedShortUrl(s.shortUrl ?? null);
+    setShortConfigured(!!s.shortUrlConfigured);
     setLoading(false);
   }, []);
 
@@ -172,9 +176,10 @@ export default function Dashboard({
 
   const liveId = slots[SLOT];
   const liveDemo = demos.find((d) => d.id === liveId);
-  // When short_url is wired in, the signature points at the short link (managed in
-  // short_url); otherwise it points at this app's repointable /go/<slot> link.
-  const goUrl = shortUrl || `${baseUrl}/go/${SLOT}`;
+  // When short_url has created the managed link, the signature points at it (short_url
+  // generates the code). Until then — or when short_url isn't wired in — it points at this
+  // app's own repointable /go/<slot> link.
+  const goUrl = resolvedShortUrl || `${baseUrl}/go/${SLOT}`;
 
   // Signature points at the repointable /go/signature link, and shows the live demo's
   // GIF/poster as the chip image.
@@ -259,7 +264,7 @@ export default function Dashboard({
         {liveDemo ? (
           <>
             <p className="muted">
-              Links to <code>{goUrl}</code>{shortUrl ? ' (managed in short_url)' : ' (repointable slot)'} → currently <b>{liveDemo.title}</b>. Paste this into Gmail / Outlook / Apple Mail signature settings.
+              Links to <code>{goUrl}</code>{resolvedShortUrl ? ' (managed in short_url)' : shortConfigured ? ' (short_url link is created on first “Make live”)' : ' (repointable slot)'} → currently <b>{liveDemo.title}</b>. Paste this into Gmail / Outlook / Apple Mail signature settings.
             </p>
             <pre className="snippet">{signatureHtml}</pre>
             <CopyButton text={signatureHtml} />

@@ -20,7 +20,7 @@ async function readAll(): Promise<StoreData> {
   try {
     const raw = await fs.readFile(DATA_FILE, 'utf8');
     const parsed = JSON.parse(raw) as StoreData;
-    return { demos: parsed.demos ?? {}, slots: parsed.slots ?? {} };
+    return { demos: parsed.demos ?? {}, slots: parsed.slots ?? {}, shortUrl: parsed.shortUrl };
   } catch (err: any) {
     if (err?.code === 'ENOENT') return { ...empty };
     throw err;
@@ -125,4 +125,17 @@ export async function setSlot(slot: string, demoId: string): Promise<boolean> {
   data.slots[slot] = demoId;
   await writeAll(data);
   return true;
+}
+
+// --- Managed short_url link (remembered after short_url generates its random code) ---
+
+export async function getShortUrlMeta(): Promise<{ code?: string; shortUrl?: string }> {
+  const { shortUrl } = await readAll();
+  return shortUrl ?? {};
+}
+
+export async function setShortUrlMeta(meta: { code: string; shortUrl: string }): Promise<void> {
+  const data = await readAll();
+  data.shortUrl = meta;
+  await writeAll(data);
 }

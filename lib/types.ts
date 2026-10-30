@@ -24,7 +24,15 @@ export interface Slots {
   [slot: string]: string; // slot name -> demo id
 }
 
+// The managed short_url link, once short_url has generated it (random code, like any
+// other short_url link). Remembered so later "set live" actions repoint this same link.
+export interface ShortUrlMeta {
+  code?: string;
+  shortUrl?: string;
+}
+
 export interface StoreData {
   demos: Record<string, Demo>;
   slots: Slots;
+  shortUrl?: ShortUrlMeta;
 }

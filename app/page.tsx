@@ -5,6 +5,6 @@ import { shortLink } from '@/lib/shorturl';
 
 export const dynamic = 'force-dynamic';
 
-export default function Home() {
-  return <Dashboard baseUrl={baseUrl()} needsToken={!!adminTokenRequired()} shortUrl={shortLink()} />;
+export default async function Home() {
+  return <Dashboard baseUrl={baseUrl()} needsToken={!!adminTokenRequired()} shortUrl={await shortLink()} />;
 }
