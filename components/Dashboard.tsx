@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Demo } from '@/lib/types';
 import { buildSignatureHtml } from '@/lib/signature';
+import { autoPoster } from '@/lib/media';
 
 const SLOT = 'signature'; // the single repointable slot this UI manages
 
@@ -183,12 +184,16 @@ export default function Dashboard({
 
   // Signature points at the repointable /go/signature link, and shows the live demo's
   // GIF/poster as the chip image.
+  // The demo's poster/GIF, else a thumbnail derived from its link (e.g. YouTube), else none.
+  function chipImage(d: Demo): string | undefined {
+    const img = d.poster || autoPoster(d.src);
+    return img && img.startsWith('/') ? baseUrl + img : img;
+  }
+
   const signatureHtml = liveDemo
     ? buildSignatureHtml({
         href: goUrl,
-        imageUrl: liveDemo.poster
-          ? (liveDemo.poster.startsWith('/') ? baseUrl + liveDemo.poster : liveDemo.poster)
-          : `${baseUrl}/demo/${liveDemo.id}`,
+        imageUrl: chipImage(liveDemo),
         title: liveDemo.title,
         subtitle: liveDemo.caption || 'See it in action →',
       })
@@ -279,7 +284,7 @@ export default function Dashboard({
         {demos.length === 0 && !loading && <p className="muted">None yet.</p>}
         {demos.map((d) => {
           const isLive = d.id === liveId;
-          const img = d.poster ? (d.poster.startsWith('/') ? baseUrl + d.poster : d.poster) : undefined;
+          const img = chipImage(d);
           return (
             <div key={d.id} style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 14 }}>
               <div className="demo-card">

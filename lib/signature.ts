@@ -18,7 +18,7 @@
 
 export interface SignatureOptions {
   href: string; // where the chip links (demo landing page, /go/<slot>, or a short link)
-  imageUrl: string; // thumbnail/GIF/poster shown in the chip
+  imageUrl?: string; // thumbnail/GIF/poster shown in the chip (omitted => text-only chip)
   title: string; // e.g. "Watch the 45-sec demo"
   subtitle?: string; // e.g. "See it in action →"
   width?: number; // chip image width in px (default 220)
@@ -39,7 +39,7 @@ export function buildSignatureHtml(opts: SignatureOptions): string {
   const width = opts.width ?? 220;
   const accent = opts.accent ?? '#2563eb';
   const href = esc(opts.href);
-  const img = esc(opts.imageUrl);
+  const img = opts.imageUrl ? esc(opts.imageUrl) : '';
   const title = esc(opts.title);
   const subtitle = opts.subtitle ? esc(opts.subtitle) : '';
 
@@ -48,12 +48,12 @@ export function buildSignatureHtml(opts: SignatureOptions): string {
     <td style="padding:0;">
       <a href="${href}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">
         <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid ${accent};border-radius:10px;overflow:hidden;width:${width}px;">
-          <tr>
+          ${img ? `<tr>
             <td style="padding:0;line-height:0;">
               <img src="${img}" alt="${title}" width="${width}" style="display:block;width:${width}px;height:auto;border:0;outline:none;" />
             </td>
           </tr>
-          <tr>
+          ` : ''}<tr>
             <td style="padding:8px 10px;background:#ffffff;">
               <div style="font-size:13px;font-weight:bold;color:#111111;line-height:1.2;">${title}</div>
               ${subtitle ? `<div style="font-size:12px;color:${accent};line-height:1.3;margin-top:2px;">${subtitle}</div>` : ''}
