@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAsset } from '@/lib/blob';
+import { getAsset, shortUrlAssetUrl } from '@/lib/blob';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Serves uploads held in the database or on the local filesystem, with HTTP range support
-// so <video> seeking works. (Vercel Blob uploads are served by Vercel at their absolute
-// URL and never reach this route.)
+const PASSED_THROUGH = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
+
+// Serves uploads with HTTP range support so <video> seeking works. Uploads stored in
+// short_url are proxied from it (Range passed through); local-dev uploads are read from
+// disk. (Vercel Blob uploads are served by Vercel at their absolute URL and never reach
+// this route.)
 export async function GET(request: NextRequest, { params }: { params: { name: string } }) {
+  const upstream = shortUrlAssetUrl(params.name);
+  if (upstream) {
+    const range = request.headers.get('range');
+    const res = await fetch(upstream, { headers: range ? { range } : {}, cache: 'no-store' });
+    const headers = new Headers();
+    for (const h of PASSED_THROUGH) {
+      const v = res.headers.get(h);
+      if (v) headers.set(h, v);
+    }
+    return new NextResponse(res.body, { status: res.status, headers });
+  }
+
   const asset = await getAsset(params.name);
   if (!asset) return new NextResponse('Not found', { status: 404 });
 

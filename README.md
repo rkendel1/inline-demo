@@ -81,41 +81,42 @@ Copy `.env.example` to `.env.local`:
 | --- | --- |
 | `NEXT_PUBLIC_BASE_URL` | Public URL of this app once deployed. Used to build signature + demo links. |
 | `ADMIN_TOKEN` | Shared secret protecting the dashboard and write APIs. **Set this in production.** |
-| `BLOB_READ_WRITE_TOKEN` | Optional. If set, uploads go to Vercel Blob instead of the local filesystem (`npm i @vercel/blob`). |
-| `SHORT_URL_BASE_URL` / `SHORT_URL_OWNER` / `SHORT_URL_PRIVATE_KEY` | Optional. Wire the signature to a managed `short_url` link (random code; see above). `SHORT_URL_CODE` optionally forces a specific code. |
+| `BLOB_READ_WRITE_TOKEN` | Optional. If set, uploads go to Vercel Blob instead of short_url's database (`npm i @vercel/blob`). |
+| `SHORT_URL_BASE_URL` / `SHORT_URL_OWNER` / `SHORT_URL_PRIVATE_KEY` | Wire the signature to a managed `short_url` link (random code; see above) **and** store everything in short_url's database. Unset = local files (dev only). `SHORT_URL_CODE` optionally forces a specific code. |
 
-## Database (durable links)
+## Storage (durable links)
 
-Storage has two backends, chosen automatically:
+inline-demo has **no database of its own**. In production everything — demos, the live
+slot, the managed short link, and uploaded videos/GIFs/posters — is stored in
+**short_url's** database (its existing Neon Postgres), under your `SHORT_URL_OWNER`, through
+short_url's signed `/api/inline-demo/*` API. The tables and their migration live in the
+short_url repo and are applied by short_url's own deploy (`web/scripts/deploy-db.sh`, run by
+its `npm run build`).
 
-- **No `DATABASE_URL`** → a local `.data/demos.json` file. Zero setup, great for dev,
-  ephemeral on serverless.
-- **`DATABASE_URL` set** → **Postgres via Prisma**. Demos, the live slot, and the generated
-  short-link code all persist, so links never break across restarts or redeploys.
+Backends, chosen automatically:
 
-Setup (any Postgres — Neon, Supabase, RDS, Vercel Postgres):
+- **short_url configured** (`SHORT_URL_BASE_URL` + `SHORT_URL_OWNER` +
+  `SHORT_URL_PRIVATE_KEY`) → stored in short_url. Durable across restarts and redeploys.
+- **Not configured** → a local `.data/demos.json` + `.data/uploads/`. Zero setup, great for
+  dev, ephemeral on serverless.
 
-```bash
-export DATABASE_URL="postgresql://user:pass@host:5432/inline_demo"
-npm run db:deploy      # prisma generate + migrate deploy + ingest any local .data/demos.json
-```
-
-`db:deploy` runs `scripts/deploy-db.sh`, which is safe to re-run. If you built demos locally
-first, it ingests `.data/demos.json` **and the uploaded media in `.data/uploads/`** into
-Postgres so nothing is lost on the switch. To import a backup later:
-`DATABASE_URL=… npm run db:ingest -- path/to/demos.json`.
+**Moving local data over:** copy this app's `.data/` folder into the short_url deployment
+(e.g. `short_url/web/inline-demo-data/`) and set `INLINE_DEMO_IMPORT=inline-demo-data/demos.json`
+and `INLINE_DEMO_OWNER=<your SHORT_URL_OWNER>` on short_url. Its next deploy imports demos,
+slots, the short link and media (insert-only, so later deploys never overwrite live edits).
 
 ## Deploying
 
 Works on Vercel (`vercel.json` sets the framework). Set these in the project:
 
-- **`DATABASE_URL`** — a Postgres URL (above). `prisma generate` runs automatically on
-  install and build; apply migrations with `npm run db:migrate` (or the full
-  `npm run db:deploy`) against the production database once.
-- **Media** is stored durably too, most-durable-first: `BLOB_READ_WRITE_TOKEN` → Vercel
-  Blob (best for large videos; `npm i @vercel/blob`); else `DATABASE_URL` → Postgres bytea;
-  else the local filesystem. With just `DATABASE_URL`, videos and GIFs persist with the
-  rest — set a Blob token only to offload large files from the database.
+- **`SHORT_URL_BASE_URL` / `SHORT_URL_OWNER` / `SHORT_URL_PRIVATE_KEY`** — generate the
+  owner + key once with `node scripts/shorturl-keygen.mjs`. These are what make storage
+  durable; there is no `DATABASE_URL` to set here. Deploy short_url first so its
+  `/api/inline-demo` tables exist.
+- **Media** is stored most-durable-first: `BLOB_READ_WRITE_TOKEN` → Vercel Blob (best for
+  large videos; `npm i @vercel/blob`); else short_url's database, served through this app's
+  `/uploads/<name>` route (proxied, with Range so video seeks); else the local filesystem.
+  Note Vercel caps request bodies at ~4.5 MB, so use a Blob token for larger videos.
 - **ffmpeg** — Vercel's default runtime has no ffmpeg, so `/api/preview` returns 501 there.
   Generate previews where ffmpeg exists: run `scripts/make-preview.sh` locally and upload
   the resulting `preview.gif` as the chip image, or do it on a build step / container.
@@ -154,18 +155,15 @@ app/
   api/preview/route.ts     ffmpeg → looping preview GIF + poster
   api/live/route.ts        Get / set which demo a slot points to
   api/track/[id]/route.ts  Transparent play counter
-prisma/
-  schema.prisma   Demo / Slot / ShortLink models (Postgres)
-  migrations/      Versioned SQL migrations
 lib/
-  store.ts       Backend dispatcher (Prisma if DATABASE_URL, else filesystem)
-  store-prisma.ts  Durable Postgres backend
+  store.ts         Backend dispatcher (short_url if configured, else filesystem)
+  store-shorturl.ts  Durable backend: short_url's database via its signed API
   store-fs.ts      Local filesystem backend (.data/demos.json)
-  db.ts            Prisma client singleton
-  blob.ts     Asset storage (Vercel Blob → Postgres bytea → filesystem)
+  blob.ts     Asset storage (Vercel Blob → short_url → filesystem)
   gif.ts      ffmpeg preview-GIF generation
   signature.ts  Email-safe signature HTML builder
-  shorturl.ts   Optional short_url integration (signed create/repoint)
+  shorturl.ts   short_url link management (create/repoint the signature link)
+  shorturl-api.ts  short_url config + signed requests
   auth.ts     Shared-secret gate
 components/
   Dashboard.tsx   The admin UI
@@ -173,6 +171,4 @@ components/
 scripts/
   make-preview.sh      Generate preview GIF/poster locally with ffmpeg
   shorturl-keygen.mjs  One-time owner id + P-256 key for the short_url integration
-  deploy-db.sh         generate + migrate deploy + ingest (run once per deploy)
-  ingest.mjs           Import .data/demos.json (or a backup) into Postgres
 ```

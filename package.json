@@ -5,17 +5,11 @@
   "description": "Host product demos, generate a repointable email-signature snippet that links to them, and track opens — the honest, deliverable-safe way.",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "postinstall": "prisma generate",
-    "db:deploy": "bash scripts/deploy-db.sh",
-    "db:migrate": "prisma migrate deploy",
-    "db:ingest": "node scripts/ingest.mjs",
-    "db:studio": "prisma studio"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
     "next": "14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1"
@@ -23,7 +17,6 @@
   "devDependencies": {
     "@types/node": "20.14.0",
     "@types/react": "18.3.3",
-    "prisma": "^5.22.0",
     "typescript": "5.5.4"
   }
 }
