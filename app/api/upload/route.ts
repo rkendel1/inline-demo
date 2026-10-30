@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { storeAsset } from '@/lib/blob';
 import { isAuthorized } from '@/lib/auth';
+import { storageError } from '@/lib/shorturl-api';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +19,10 @@ export async function POST(request: NextRequest) {
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  const asset = await storeAsset(file.name || 'upload', bytes, file.type || 'application/octet-stream');
-  return NextResponse.json(asset, { status: 201 });
+  try {
+    const asset = await storeAsset(file.name || 'upload', bytes, file.type || 'application/octet-stream');
+    return NextResponse.json(asset, { status: 201 });
+  } catch (err) {
+    return storageError(err);
+  }
 }

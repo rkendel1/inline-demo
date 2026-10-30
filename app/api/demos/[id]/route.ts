@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDemo, updateDemo, deleteDemo } from '@/lib/store';
 import { isAuthorized } from '@/lib/auth';
+import { storageError } from '@/lib/shorturl-api';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const demo = await getDemo(params.id);
@@ -23,14 +24,22 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (patch.kind && patch.kind !== 'video' && patch.kind !== 'embed') {
     return NextResponse.json({ error: "kind must be 'video' or 'embed'" }, { status: 400 });
   }
-  const demo = await updateDemo(params.id, patch);
-  if (!demo) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ demo });
+  try {
+    const demo = await updateDemo(params.id, patch);
+    if (!demo) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ demo });
+  } catch (err) {
+    return storageError(err);
+  }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   if (!isAuthorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const ok = await deleteDemo(params.id);
-  if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ ok: true });
+  try {
+    const ok = await deleteDemo(params.id);
+    if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return storageError(err);
+  }
 }

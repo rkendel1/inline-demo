@@ -34,6 +34,29 @@ export function isShortUrlConfigured(): boolean {
   return shortUrlConfig() !== null;
 }
 
+const REQUIRED_ENV = ['SHORT_URL_BASE_URL', 'SHORT_URL_OWNER', 'SHORT_URL_PRIVATE_KEY'] as const;
+
+export class StorageNotConfiguredError extends Error {}
+
+// The local .data/ fallback only works where the filesystem is writable and lasting, i.e.
+// local dev. On Vercel (read-only, ephemeral) a missing short_url config is a deploy
+// mistake, so say exactly what's missing instead of failing on mkdir.
+export function assertLocalStorageAllowed(): void {
+  if (!process.env.VERCEL) return;
+  const missing = REQUIRED_ENV.filter((name) => !process.env[name]?.trim());
+  throw new StorageNotConfiguredError(
+    `Storage is not configured on this deployment: missing ${missing.join(', ')}. ` +
+      'Set them in Vercel → Project → Settings → Environment Variables (for Production), then redeploy.'
+  );
+}
+
+// JSON 500 for a storage failure, so the dashboard shows the reason.
+export function storageError(err: unknown): Response {
+  console.error(err);
+  const message = err instanceof Error ? err.message : String(err);
+  return Response.json({ error: message }, { status: err instanceof StorageNotConfiguredError ? 503 : 500 });
+}
+
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 // Signs and sends a request. `body` is a JSON object, or raw bytes (uploads); the

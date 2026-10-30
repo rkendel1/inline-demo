@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSlots, setSlot } from '@/lib/store';
 import { isAuthorized } from '@/lib/auth';
+import { storageError } from '@/lib/shorturl-api';
 import { isShortUrlConfigured, repointShortLink, shortLink } from '@/lib/shorturl';
 import { baseUrl } from '@/lib/base';
 
@@ -24,7 +25,12 @@ export async function POST(request: NextRequest) {
   if (!/^[a-zA-Z0-9_-]{1,40}$/.test(slot)) {
     return NextResponse.json({ error: 'slot must be 1-40 letters, digits, - or _' }, { status: 400 });
   }
-  const ok = await setSlot(slot, demoId);
+  let ok: boolean;
+  try {
+    ok = await setSlot(slot, demoId);
+  } catch (err) {
+    return storageError(err);
+  }
   if (!ok) return NextResponse.json({ error: 'Unknown demoId' }, { status: 400 });
 
   // If short_url is wired in, repoint the managed short link to this demo's landing page.
