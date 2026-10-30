@@ -1,12 +1,13 @@
 // Store facade. Picks the backend once:
-//   - DATABASE_URL set  -> Prisma/Postgres (durable; production). Links never break.
-//   - otherwise         -> filesystem JSON under .data/ (zero-setup local dev).
+//   - short_url configured -> stored in short_url's database via its signed API
+//                             (durable; production). Links never break.
+//   - otherwise            -> filesystem JSON under .data/ (zero-setup local dev).
 //
-// The Prisma module is imported lazily so the app builds and runs locally without a
-// generated Prisma client or a database. All functions keep the same signatures, so the
-// API routes don't need to know which backend is active.
+// All functions keep the same signatures, so the API routes don't need to know which
+// backend is active.
 
 import type { Demo } from './types';
+import { isShortUrlConfigured } from './shorturl-api';
 export { newId } from './id';
 
 type Backend = typeof import('./store-fs');
@@ -15,9 +16,7 @@ let backendPromise: Promise<Backend> | null = null;
 
 function backend(): Promise<Backend> {
   if (!backendPromise) {
-    backendPromise = process.env.DATABASE_URL
-      ? (import('./store-prisma') as Promise<Backend>)
-      : import('./store-fs');
+    backendPromise = isShortUrlConfigured() ? import('./store-shorturl') : import('./store-fs');
   }
   return backendPromise;
 }

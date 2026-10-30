@@ -1,6 +1,6 @@
 // Filesystem store — the zero-setup local backend (a JSON file under .data/).
-// Used when DATABASE_URL is not set. For production, DATABASE_URL selects the Prisma
-// backend instead (lib/store-prisma.ts), so links are durable.
+// Used when short_url is not configured. In production, short_url stores everything
+// instead (lib/store-shorturl.ts), so links are durable.
 
 import { promises as fs } from 'fs';
 import path from 'path';
