@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Demo } from '@/lib/types';
 import { buildSignatureHtml } from '@/lib/signature';
-import { autoPoster } from '@/lib/media';
+import { autoPoster, youTubeId } from '@/lib/media';
+import { videoChipGif } from '@/lib/video-gif';
 
 const SLOT = 'signature'; // the single repointable slot this UI manages
 
@@ -103,6 +104,28 @@ export default function Dashboard({
     setBusy(false);
   }
 
+  // Builds the animated chip GIF for a demo source and returns its URL. YouTube links are
+  // built on the server from YouTube's stills; videos are sampled right here in the browser
+  // (no ffmpeg needed anywhere).
+  async function buildGif(input: string): Promise<string | null> {
+    if (youTubeId(input)) {
+      const r = await fetch('/api/preview', { method: 'POST', headers: authHeaders, body: JSON.stringify({ src: input }) });
+      const j = await r.json();
+      if (!r.ok) {
+        setMsg(j.error || 'Preview generation failed.');
+        return null;
+      }
+      return j.gifUrl as string;
+    }
+    try {
+      const { gif } = await videoChipGif(input);
+      return await uploadFile(new File([gif], 'preview.gif', { type: 'image/gif' }), 'Preview GIF');
+    } catch (err: any) {
+      setMsg(`Couldn't build a GIF from this video (${err?.message || err}). If it's hosted elsewhere, upload it here instead, or set a chip image.`);
+      return null;
+    }
+  }
+
   async function generatePreview(videoSrc?: string) {
     const input = (videoSrc ?? src).trim();
     if (!input) {
@@ -111,17 +134,26 @@ export default function Dashboard({
     }
     setBusy(true);
     setMsg('Generating preview GIF…');
-    const r = await fetch('/api/preview', {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({ src: input, seconds: 4, width: 320, fps: 12 }),
-    });
-    const j = await r.json();
-    if (!r.ok) {
-      setMsg(j.error || 'Preview generation failed.');
-    } else {
-      setPoster(j.gifUrl); // the moving GIF becomes the chip image
+    const url = await buildGif(input);
+    if (url) {
+      setPoster(url); // the moving GIF becomes the chip image
       setMsg('Preview GIF ready — it will be used as the signature chip image.');
+    }
+    setBusy(false);
+  }
+
+  // Generates (or regenerates) the GIF for an existing demo and saves it as its chip image.
+  async function regenerateGif(d: Demo) {
+    setBusy(true);
+    setMsg(`Generating preview GIF for “${d.title}”…`);
+    const url = await buildGif(d.kind === 'video' && d.src.startsWith('/') ? baseUrl + d.src : d.src);
+    if (url) {
+      const r = await fetch(`/api/demos/${d.id}`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ poster: url }) });
+      if (!r.ok) setMsg((await r.json()).error || 'Could not save the GIF.');
+      else {
+        setMsg('Preview GIF ready — your signature chip now uses it. Copy the signature again.');
+        await load();
+      }
     }
     setBusy(false);
   }
@@ -250,6 +282,7 @@ export default function Dashboard({
           <>
             <label>Demo link (short_url link, hosted web demo, Loom, etc.)</label>
             <input value={src} onChange={(e) => setSrc(e.target.value)} placeholder="https://0-2.ca/abc123" />
+            {youTubeId(src) && <p className="muted">YouTube link — the animated chip GIF is generated automatically when you add it.</p>}
           </>
         )}
 
@@ -306,6 +339,11 @@ export default function Dashboard({
                   </div>
                   <div className="row" style={{ marginTop: 8 }}>
                     {!isLive && <button onClick={() => setLive(d.id)} disabled={busy}>Make live</button>}
+                    {(d.kind === 'video' || youTubeId(d.src)) && (
+                      <button className="ghost" onClick={() => regenerateGif(d)} disabled={busy}>
+                        {d.poster?.endsWith('.gif') ? 'Regenerate GIF' : 'Generate GIF'}
+                      </button>
+                    )}
                     <button className="danger" onClick={() => remove(d.id)} disabled={busy}>Delete</button>
                   </div>
                 </div>

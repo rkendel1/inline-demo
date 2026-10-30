@@ -3,23 +3,19 @@ import { makePreview, hasFfmpeg, PreviewOptions } from '@/lib/gif';
 import { storeAsset, localUploadPath } from '@/lib/blob';
 import { isAuthorized } from '@/lib/auth';
 import { baseUrl } from '@/lib/base';
+import { youTubeId } from '@/lib/media';
+import { youTubeChipGif } from '@/lib/youtube-gif';
 import { promises as fs } from 'fs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // POST { src, start?, seconds?, width?, fps? }
-// Generates a looping preview GIF + poster from the given video and stores both.
+// Generates a looping preview GIF (+ poster) and stores it. YouTube links are handled in
+// pure JS; other videos need ffmpeg here (the dashboard builds those in the browser).
 // `src` may be an /uploads path (resolved against this app) or an http(s) URL.
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!(await hasFfmpeg())) {
-    return NextResponse.json(
-      { error: 'ffmpeg not available on this host. Generate the preview where ffmpeg is installed (see scripts/make-preview.sh), or set a poster image manually.' },
-      { status: 501 }
-    );
-  }
 
   let body: any;
   try {
@@ -30,6 +26,26 @@ export async function POST(request: NextRequest) {
 
   let src = typeof body.src === 'string' ? body.src.trim() : '';
   if (!src) return NextResponse.json({ error: 'src is required' }, { status: 400 });
+
+  // YouTube: built in pure JS from the video's published stills — no ffmpeg needed.
+  if (youTubeId(src)) {
+    try {
+      const gif = await youTubeChipGif(src);
+      if (!gif) return NextResponse.json({ error: "Couldn't read this video's thumbnails from YouTube." }, { status: 502 });
+      const gifAsset = await storeAsset('preview.gif', Buffer.from(gif), 'image/gif');
+      return NextResponse.json({ gifUrl: gifAsset.url }, { status: 201 });
+    } catch (err: any) {
+      return NextResponse.json({ error: `Preview failed: ${err?.message || err}` }, { status: 500 });
+    }
+  }
+
+  if (!(await hasFfmpeg())) {
+    return NextResponse.json(
+      { error: 'ffmpeg not available on this host. Video previews are generated in the browser by the dashboard instead.' },
+      { status: 501 }
+    );
+  }
+
 
   // Prefer reading a local upload straight from disk — more robust than fetching our own
   // HTTP endpoint. Fall back to the URL (remote http(s), or an absolute blob URL).

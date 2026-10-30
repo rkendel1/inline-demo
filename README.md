@@ -117,9 +117,11 @@ Works on Vercel (`vercel.json` sets the framework). Set these in the project:
   large videos; `npm i @vercel/blob`); else short_url's database, served through this app's
   `/uploads/<name>` route (proxied, with Range so video seeks); else the local filesystem.
   Note Vercel caps request bodies at ~4.5 MB, so use a Blob token for larger videos.
-- **ffmpeg** — Vercel's default runtime has no ffmpeg, so `/api/preview` returns 501 there.
-  Generate previews where ffmpeg exists: run `scripts/make-preview.sh` locally and upload
-  the resulting `preview.gif` as the chip image, or do it on a build step / container.
+- **Preview GIFs need no ffmpeg.** YouTube demos get an animated chip GIF automatically on
+  create (built in pure JS from YouTube's published stills, crossfaded, with a play
+  button). Uploaded videos are sampled into a GIF in the browser by the dashboard. Existing
+  demos have a **Generate GIF** button. `/api/preview` still uses ffmpeg for other videos
+  where it's installed.
 
 ```bash
 # Generate a preview GIF + poster locally:

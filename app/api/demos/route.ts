@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { listDemos, createDemo } from '@/lib/store';
 import { isAuthorized } from '@/lib/auth';
 import { storageError } from '@/lib/shorturl-api';
+import { storeAsset } from '@/lib/blob';
+import { youTubeChipGif } from '@/lib/youtube-gif';
+
+// A YouTube demo gets its animated chip GIF automatically; anything else keeps no poster
+// (the dashboard builds video GIFs in the browser before creating).
+async function autoChip(src: string): Promise<string | undefined> {
+  try {
+    const gif = await youTubeChipGif(src);
+    return gif ? (await storeAsset('preview.gif', Buffer.from(gif), 'image/gif')).url : undefined;
+  } catch (err) {
+    console.error('auto chip GIF failed', err);
+    return undefined;
+  }
+}
 
 export async function GET() {
   const demos = await listDemos();
@@ -32,7 +46,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const demo = await createDemo({ title, kind, src, poster, caption });
+    const demo = await createDemo({ title, kind, src, poster: poster || (await autoChip(src)), caption });
     return NextResponse.json({ demo }, { status: 201 });
   } catch (err) {
     return storageError(err);
